@@ -14,6 +14,7 @@
 #include <fcntl.h>
 #include <math.h>
 #include <time.h>
+#include <iostream>
 #define OSR_4096 10000
 #define CMD_PROM_READ 0xA0
 #define MS5611_ADDRESS 0x77
