@@ -9,18 +9,20 @@ int main()
 	double timeuse;
 
 	MS5611 test;
+	double tmp[2];
 	test.MS5611Init();
-	test.MS5611PROMSettle();
+	test.LocalPressureSetter(1023);
 	while (true)
 	{
 		gettimeofday(&t1, NULL);
 		start = clock();
-		test.MS5611PreReader();
-		std::cout << test.Pressure << "\n";
+		test.MS5611PreReader(tmp);
+		std::cout  << "Pressure:" << tmp[0] << "\n";
+		std::cout << "Altitude:" << tmp[1] << "\n";
 		end = clock();
 		gettimeofday(&t2, NULL);
 		timeuse = (t2.tv_sec - t1.tv_sec) + (double)(t2.tv_usec - t1.tv_usec) / 1000.0;
-		std::cout << "CPUtime = " << double(end - start) / 1000.0<< "ms\n";
+		std::cout << "CPUtime = " << double(end - start) / 1000.0 << "ms\n";
 		std::cout << "Threadtime = " << timeuse << "ms\n";
 	}
 }

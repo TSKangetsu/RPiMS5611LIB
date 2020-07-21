@@ -21,12 +21,10 @@
 #define CONV_D1_4096  0x48
 #define CONV_D2_4096  0x58
 #define beta 0.96
-#define SEA_LEVEL_PRESSURE 1023.20
 
 class MS5611
 {
 public:
-	double Pressure;
 	inline bool MS5611Init()
 	{
 		if ((MS5611FD = open("/dev/i2c-1", O_RDWR)) < 0) {
@@ -42,18 +40,16 @@ public:
 			return false;
 		}
 		usleep(10000);
+		MS5611PROMSettle();
 		return true;
 	}
 
-	inline void MS5611PROMSettle()
+	inline void LocalPressureSetter(double SeaLevelPressure)
 	{
-		for (int i = 0; i < 7; i++) {
-			C[i] = MS5611PROMReader(MS5611FD, CMD_PROM_READ + (i * 2));
-			usleep(1000);
-		}
+		LocalPressure = SeaLevelPressure;
 	}
 
-	inline void MS5611PreReader()
+	inline void MS5611PreReader(double result[2])
 	{
 		D1 = MS5611CONVReader(MS5611FD, CONV_D1_4096);
 		D2 = MS5611CONVReader(MS5611FD, CONV_D2_4096);
@@ -81,6 +77,9 @@ public:
 		}
 		P = ((((int64_t)D1 * SENS) / pow(2, 21) - OFF) / pow(2, 15));
 		Pressure = (double)P / (double)100;
+		Altitude = 44330.0f * (1.0f - pow((double)Pressure / (double)LocalPressure, 0.1902949f));
+		result[0] = Pressure;
+		result[1] = Altitude;
 		//cac-=
 	}
 
@@ -97,6 +96,18 @@ private:
 	int64_t SENS;
 	int32_t P;
 	//cac tmp-=
+	double LocalPressure = 1023;
+	double result[2];
+	double Altitude;
+	double Pressure;
+
+	inline void MS5611PROMSettle()
+	{
+		for (int i = 0; i < 7; i++) {
+			C[i] = MS5611PROMReader(MS5611FD, CMD_PROM_READ + (i * 2));
+			usleep(1000);
+		}
+	}
 
 	unsigned int MS5611PROMReader(int DA, char PROM_CMD)
 	{
