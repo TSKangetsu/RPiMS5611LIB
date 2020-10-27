@@ -16,8 +16,9 @@ int main()
 	{
 		gettimeofday(&t1, NULL);
 		start = clock();
-		test.MS5611PreReader(tmp);
-		std::cout  << "Pressure:" << tmp[0] << "\n";
+		// test.MS5611PreReader(tmp);
+		test.MS5611FastReader(tmp);
+		std::cout << "Pressure:" << tmp[0] << "\n";
 		std::cout << "Altitude:" << tmp[1] << "\n";
 		end = clock();
 		gettimeofday(&t2, NULL);
