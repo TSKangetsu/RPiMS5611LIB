@@ -48,9 +48,11 @@ public:
 		return true;
 	}
 
-	inline void LocalPressureSetter(double SeaLevelPressure)
+	inline void LocalPressureSetter(double SeaLevelPressure, int TEMPSKIPS)
 	{
 		LocalPressure = SeaLevelPressure;
+		clockTimer = TEMPSKIPS;
+		TEMPSKIP = TEMPSKIPS;
 	}
 
 	inline void MS5611PreReader(double result[2])
@@ -94,7 +96,7 @@ public:
 		int h;
 		char zero = 0x0;
 		char output;
-		if (clockTimer == 20)
+		if (clockTimer == TEMPSKIP)
 		{
 			clockTimer = 0;
 			output = 0x58;
@@ -135,7 +137,14 @@ public:
 		P = ((((int64_t)D1 * SENS) / pow(2, 21) - OFF) / pow(2, 15));
 		Pressure = (double)P / (double)100;
 		Altitude = 44330.0f * (1.0f - pow((double)Pressure / (double)LocalPressure, 0.1902949f));
-		result[0] = Pressure;
+
+		PresureAvaTotal -= PresureAvaData[PresureClock];
+		PresureAvaData[PresureClock] = Pressure;
+		PresureAvaTotal += PresureAvaData[PresureClock];
+		if (PresureClock == TEMPSKIP)
+			PresureClock = 0;
+		PresureClock++;
+		result[0] = PresureAvaTotal / TEMPSKIP;
 		result[1] = Altitude;
 		clockTimer++;
 	}
@@ -158,8 +167,11 @@ private:
 	double Altitude;
 	double Pressure;
 	//cac 100hz
-	int clockTimer = 20;
-
+	int clockTimer = 8;
+	int TEMPSKIP = 8;
+	int PresureClock = 1;
+	float PresureAvaData[50];
+	float PresureAvaTotal;
 	inline void MS5611PROMSettle()
 	{
 		for (int i = 0; i < 7; i++)
