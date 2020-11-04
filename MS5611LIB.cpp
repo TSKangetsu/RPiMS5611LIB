@@ -1,15 +1,12 @@
 ﻿#include <iostream>
-#include <sys/time.h>　
 #include <wiringPi.h>
 #include "src/MS5611LIB.h"
 
 int main()
 {
-	clock_t start, end;
-	struct timeval t1, t2;
 	double timeuse;
 	double s, e;
-
+	wiringPiSetup();
 	MS5611 test;
 	double tmp[2];
 	test.MS5611Init();
