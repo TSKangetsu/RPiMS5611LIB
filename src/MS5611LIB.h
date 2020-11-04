@@ -136,7 +136,7 @@ public:
 			timeuse1 = end1 - start1;
 			if ((10000 - timeuse1) < 0)
 			{
-				usleep(10000);
+				usleep(1);
 			}
 			else
 			{
