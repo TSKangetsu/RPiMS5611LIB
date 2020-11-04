@@ -1,5 +1,6 @@
 ﻿#include <iostream>
 #include <sys/time.h>　
+#include <wiringPi.h>
 #include "src/MS5611LIB.h"
 
 int main()
@@ -7,6 +8,7 @@ int main()
 	clock_t start, end;
 	struct timeval t1, t2;
 	double timeuse;
+	double s, e;
 
 	MS5611 test;
 	double tmp[2];
@@ -14,16 +16,13 @@ int main()
 	test.LocalPressureSetter(1023, 5);
 	while (true)
 	{
-		gettimeofday(&t1, NULL);
-		start = clock();
+		s = micros();
 		// test.MS5611PreReader(tmp);
 		test.MS5611FastReader(tmp);
 		std::cout << "Pressure:" << tmp[0] << "   ";
 		std::cout << "Altitude:" << tmp[1] << "   ";
-		end = clock();
-		gettimeofday(&t2, NULL);
-		timeuse = (t2.tv_sec - t1.tv_sec) + (double)(t2.tv_usec - t1.tv_usec) / 1000.0;
-		std::cout << "CPUtime = " << double(end - start) / 1000.0 << "ms  ";
-		std::cout << "Threadtime = " << timeuse << "ms    \r";
+		e = micros();
+		timeuse = e - s;
+		std::cout << "CPUtime = " << timeuse << "us  \n";
 	}
 }

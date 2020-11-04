@@ -9,6 +9,7 @@
 #include <linux/i2c-dev.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
+#include <sys/time.h>　
 #include <sys/stat.h>
 #include <linux/types.h>
 #include <fcntl.h>
@@ -28,6 +29,7 @@ class MS5611
 public:
 	inline bool MS5611Init()
 	{
+		IsFirstStart = true;
 		if ((MS5611FD = open("/dev/i2c-1", O_RDWR)) < 0)
 		{
 			std::cout << "Failed to open the bus.\n";
@@ -100,10 +102,13 @@ public:
 		{
 			clockTimer = 0;
 			output = 0x58;
+			//======================================//
+			start1 = micros();
 			write(MS5611FD, &output, 1);
-			usleep(9500);
+			usleep(9100);
 			write(MS5611FD, &zero, 1);
 			read(MS5611FD, &D, 3);
+			//======================================//
 			D2 = D[0] * (unsigned long)65536 + D[1] * (unsigned long)256 + D[2];
 			dT = D2 - (uint32_t)C[5] * pow(2, 8);
 			TEMP = (2000 + (dT * (int64_t)C[5] / pow(2, 23)));
@@ -126,27 +131,60 @@ public:
 				OFF -= OFF1;
 				SENS -= SENS1;
 			}
+			IsFirstStart = true;
+			end1 = micros();
+			timeuse1 = end1 - start1;
+			if ((10000 - timeuse1) < 0)
+			{
+				usleep(10000);
+			}
+			else
+			{
+				usleep(10000 - timeuse1);
+			}
+			return;
 		}
 
+		//======================================//
 		output = 0x48;
+		start = micros();
+		if (!IsFirstStart)
+		{
+			write(MS5611FD, &zero, 1);
+			read(MS5611FD, &D, 3);
+		}
 		write(MS5611FD, &output, 1);
-		usleep(9500);
-		write(MS5611FD, &zero, 1);
-		read(MS5611FD, &D, 3);
+		//======================================//
 		D1 = D[0] * (unsigned long)65536 + D[1] * (unsigned long)256 + D[2];
 		P = ((((int64_t)D1 * SENS) / pow(2, 21) - OFF) / pow(2, 15));
 		Pressure = (double)P / (double)100;
-		Altitude = 44330.0f * (1.0f - pow((double)Pressure / (double)LocalPressure, 0.1902949f));
-
-		PresureAvaTotal -= PresureAvaData[PresureClock];
-		PresureAvaData[PresureClock] = Pressure;
-		PresureAvaTotal += PresureAvaData[PresureClock];
-		if (PresureClock == TEMPSKIP)
-			PresureClock = 0;
-		PresureClock++;
-		result[0] = PresureAvaTotal / TEMPSKIP;
-		result[1] = Altitude;
+		if (!IsFirstStart)
+		{
+			PresureAvaTotal -= PresureAvaData[PresureClock];
+			PresureAvaData[PresureClock] = Pressure;
+			PresureAvaTotal += PresureAvaData[PresureClock];
+			PresureClock++;
+			if (PresureClock == TEMPSKIP)
+				PresureClock = 0;
+			result[0] = PresureAvaTotal / TEMPSKIP;
+			result[1] = Altitude;
+		}
+		if (IsFirstStart)
+		{
+			IsFirstStart = false;
+		}
 		clockTimer++;
+		//========================//
+		end = micros();
+		timeuse = end - start;
+		if ((10000 - timeuse) < 0)
+		{
+			usleep(10000);
+		}
+		else
+		{
+			usleep(10000 - timeuse);
+		}
 	}
 
 private:
@@ -169,9 +207,14 @@ private:
 	//cac 100hz
 	int clockTimer = 8;
 	int TEMPSKIP = 8;
-	int PresureClock = 1;
+	int PresureClock = 0;
 	float PresureAvaData[50];
 	float PresureAvaTotal;
+
+	double start, end, start1, end1;
+	double timeuse, timeuse1;
+	bool IsFirstStart;
+
 	inline void MS5611PROMSettle()
 	{
 		for (int i = 0; i < 7; i++)
