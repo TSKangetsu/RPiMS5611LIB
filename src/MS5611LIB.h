@@ -89,7 +89,7 @@ public:
 		//cac-=
 	}
 
-	inline void MS5611FastReader(double result[2])
+	inline int MS5611FastReader(double result[2])
 	{
 		long ret = 0;
 		uint8_t D[] = {0, 0, 0};
@@ -98,12 +98,16 @@ public:
 		char output;
 		if (clockTimer == TEMPSKIP)
 		{
-			clockTimer = 0;
+
 			output = 0x58;
 			write(MS5611FD, &output, 1);
 			usleep(9800);
 			write(MS5611FD, &zero, 1);
-			read(MS5611FD, &D, 3);
+			h = read(MS5611FD, &D, 3);
+			if (h != 3)
+			{
+				return -2;
+			}
 			D2 = D[0] * (unsigned long)65536 + D[1] * (unsigned long)256 + D[2];
 			dT = D2 - (uint32_t)C[5] * pow(2, 8);
 			TEMP = (2000 + (dT * (int64_t)C[5] / pow(2, 23)));
@@ -126,6 +130,7 @@ public:
 				OFF -= OFF1;
 				SENS -= SENS1;
 			}
+			clockTimer = 0;
 		}
 		else
 		{
@@ -133,7 +138,11 @@ public:
 			write(MS5611FD, &output, 1);
 			usleep(9800);
 			write(MS5611FD, &zero, 1);
-			read(MS5611FD, &D, 3);
+			h = read(MS5611FD, &D, 3);
+			if (h != 3)
+			{
+				return -1;
+			}
 			D1 = D[0] * (unsigned long)65536 + D[1] * (unsigned long)256 + D[2];
 			P = ((((int64_t)D1 * SENS) / pow(2, 21) - OFF) / pow(2, 15));
 			Pressure = (double)P / (double)100;
@@ -147,6 +156,7 @@ public:
 			result[1] = Altitude;
 			clockTimer++;
 		}
+		return 0;
 	}
 
 private:
