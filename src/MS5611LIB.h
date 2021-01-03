@@ -60,7 +60,7 @@ public:
 		tmp[1] = tmp[0] - 10;
 		tmp[2] = tmp[0] - 10;
 		tmp[3] = tmp[0] - 10;
-		while ((int)tmp[0] >= (int)tmp[2])
+		while ((int)tmp[0] - 3 >= (int)tmp[2] && (int)tmp[0] + 3 <= (int)tmp[2])
 		{
 			MS5611FastReader(tmp);
 		}
