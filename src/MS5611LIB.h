@@ -21,7 +21,8 @@
 #define MS5611_ADDRESS 0x77
 #define CONV_D1_4096 0x48
 #define CONV_D2_4096 0x58
-#define beta 0.96
+#define beta 0.985
+#define betaSec 6.0
 
 class MS5611
 {
@@ -48,7 +49,29 @@ public:
 		return true;
 	}
 
-	inline void LocalPressureSetter(double SeaLevelPressure, int TEMPSKIPS)
+	inline void MS5611Calibration(double result[10])
+	{
+		double tmp[10] = {0};
+		LocalPressureSetter();
+		for (size_t i = 0; i < 40; i++)
+		{
+			MS5611FastReader(tmp);
+		}
+		tmp[1] = tmp[0] - 10;
+		tmp[2] = tmp[0] - 10;
+		tmp[3] = tmp[0] - 10;
+		while ((int)tmp[0] >= (int)tmp[2])
+		{
+			MS5611FastReader(tmp);
+		}
+
+		result[0] = tmp[0];
+		result[1] = tmp[1];
+		result[2] = tmp[2];
+		result[3] = tmp[3];
+	}
+
+	inline void LocalPressureSetter(double SeaLevelPressure = 1023, int TEMPSKIPS = 5)
 	{
 		LocalPressure = SeaLevelPressure;
 		clockTimer = TEMPSKIPS;
@@ -89,7 +112,11 @@ public:
 		//cac-=
 	}
 
-	inline void MS5611FastReader(double result[2])
+	//result[0] raw pressure
+	//result[1] fast pressure
+	//result[2] filter pressure
+	//result[3] tmp pressure,don't use
+	inline int MS5611FastReader(double result[10])
 	{
 		long ret = 0;
 		uint8_t D[] = {0, 0, 0};
@@ -98,12 +125,16 @@ public:
 		char output;
 		if (clockTimer == TEMPSKIP)
 		{
-			clockTimer = 0;
+
 			output = 0x58;
 			write(MS5611FD, &output, 1);
 			usleep(9800);
 			write(MS5611FD, &zero, 1);
-			read(MS5611FD, &D, 3);
+			h = read(MS5611FD, &D, 3);
+			if (h != 3)
+			{
+				return -2;
+			}
 			D2 = D[0] * (unsigned long)65536 + D[1] * (unsigned long)256 + D[2];
 			dT = D2 - (uint32_t)C[5] * pow(2, 8);
 			TEMP = (2000 + (dT * (int64_t)C[5] / pow(2, 23)));
@@ -126,6 +157,7 @@ public:
 				OFF -= OFF1;
 				SENS -= SENS1;
 			}
+			clockTimer = 0;
 		}
 		else
 		{
@@ -133,7 +165,11 @@ public:
 			write(MS5611FD, &output, 1);
 			usleep(9800);
 			write(MS5611FD, &zero, 1);
-			read(MS5611FD, &D, 3);
+			h = read(MS5611FD, &D, 3);
+			if (h != 3)
+			{
+				return -1;
+			}
 			D1 = D[0] * (unsigned long)65536 + D[1] * (unsigned long)256 + D[2];
 			P = ((((int64_t)D1 * SENS) / pow(2, 21) - OFF) / pow(2, 15));
 			Pressure = (double)P / (double)100;
@@ -143,10 +179,28 @@ public:
 			PresureClock++;
 			if (PresureClock == TEMPSKIP)
 				PresureClock = 0;
-			result[0] = PresureAvaTotal / TEMPSKIP;
-			result[1] = Altitude;
+			result[0] = (PresureAvaTotal / TEMPSKIP) * 100;
 			clockTimer++;
+
+			PresureAvaTotalSec -= PresureAvaDataSec[PresureClockSec];
+			PresureAvaDataSec[PresureClockSec] = result[0];
+			PresureAvaTotalSec += PresureAvaDataSec[PresureClockSec];
+			PresureClockSec++;
+			if (PresureClockSec == 20)
+				PresureClockSec = 0;
+			result[1] = PresureAvaTotalSec / 20.0;
+			result[3] = result[3] * beta + (1.0 - beta) * result[1];
+
+			double diff = result[3] - result[1];
+			if (diff > 8)
+				diff = 8;
+			if (diff < -8)
+				diff = -8;
+			if (diff > 1 || diff < -1)
+				result[3] -= diff / betaSec;
+			result[2] = result[3];
 		}
+		return 0;
 	}
 
 private:
@@ -167,11 +221,16 @@ private:
 	double Altitude;
 	double Pressure;
 	//cac 100hz
-	int clockTimer = 8;
-	int TEMPSKIP = 8;
+	int clockTimer = 5;
+	int TEMPSKIP = 5;
+
 	int PresureClock = 0;
-	float PresureAvaData[50];
+	float PresureAvaData[20];
 	float PresureAvaTotal;
+
+	int PresureClockSec = 0;
+	double PresureAvaDataSec[20];
+	float PresureAvaTotalSec;
 
 	inline void MS5611PROMSettle()
 	{
