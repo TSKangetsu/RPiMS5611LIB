@@ -78,7 +78,7 @@ public:
 		TEMPSKIP = TEMPSKIPS;
 	}
 
-	inline void MS5611PreReader(double result[2])
+	inline void MS5611PreReader(double *result)
 	{
 		D1 = MS5611CONVReader(MS5611FD, CONV_D1_4096);
 		D2 = MS5611CONVReader(MS5611FD, CONV_D2_4096);
@@ -116,7 +116,8 @@ public:
 	//result[1] fast pressure
 	//result[2] filter pressure
 	//result[3] tmp pressure,don't use
-	inline int MS5611FastReader(double result[10])
+	//result[4] Altitude
+	inline int MS5611FastReader(double *result)
 	{
 		long ret = 0;
 		uint8_t D[] = {0, 0, 0};
@@ -199,6 +200,8 @@ public:
 			if (diff > 1 || diff < -1)
 				result[3] -= diff / betaSec;
 			result[2] = result[3];
+			double Altitudes = 44330.0f * (1.0f - pow((result[2] / 100.f) / (LocalPressure / 100.f), 0.1902949f));
+			result[4] = Altitudes;
 		}
 		return 0;
 	}
