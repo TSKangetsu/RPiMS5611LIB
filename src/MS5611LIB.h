@@ -229,7 +229,7 @@ private:
 
 	int PresureClock = 0;
 	float PresureAvaData[20];
-	float PresureAvaTotal;
+	float PresureAvaTotal = 0;
 
 	int PresureClockSec = 0;
 	double PresureAvaDataSec[20];

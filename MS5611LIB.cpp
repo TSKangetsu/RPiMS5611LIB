@@ -8,16 +8,17 @@ int main()
 	double s, e;
 	wiringPiSetup();
 	MS5611 test;
-	double tmp[2];
+	double tmp[10];
 	test.MS5611Init();
-	test.LocalPressureSetter(1023, 5);
+	test.MS5611Calibration(tmp);
+	test.LocalPressureSetter(tmp[2], 5);
 	while (true)
 	{
 		s = micros();
 		// test.MS5611PreReader(tmp);
 		test.MS5611FastReader(tmp);
-		std::cout << "Pressure:" << tmp[0] << "   ";
-		std::cout << "Altitude:" << tmp[1] << "   ";
+		std::cout << "Pressure:" << tmp[2] << "   ";
+		std::cout << "Altitude:" << tmp[4] << "   ";
 		e = micros();
 		timeuse = e - s;
 		std::cout << "CPUtime = " << timeuse << "us  \n";
