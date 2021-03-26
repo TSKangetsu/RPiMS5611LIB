@@ -22,7 +22,14 @@
 #define CONV_D1_4096 0x48
 #define CONV_D2_4096 0x58
 #define beta 0.985
+#define beta50HZ 0.965
 #define betaSec 6.0
+
+#define MS5611RawPressure 0
+#define MS5611FastPressure 1
+#define MS5611FilterPressure 2
+#define MS5611TmpData 3
+#define MS5611Altitude 4
 
 class MS5611
 {
@@ -49,13 +56,23 @@ public:
 		return true;
 	}
 
-	inline void MS5611Calibration(double result[10])
+	inline void MS5611Calibration(double result[10], bool FastMode)
 	{
 		double tmp[10] = {0};
 		LocalPressureSetter();
-		for (size_t i = 0; i < 40; i++)
+		if (FastMode)
 		{
-			MS5611FastReader(tmp);
+			for (size_t i = 0; i < 40; i++)
+			{
+				MS5611FastReader(tmp);
+			}
+		}
+		else
+		{
+			for (size_t i = 0; i < 20; i++)
+			{
+				MS5611PreReader(tmp);
+			}
 		}
 		tmp[1] = tmp[0] - 10;
 		tmp[2] = tmp[0] - 10;
@@ -78,7 +95,7 @@ public:
 		TEMPSKIP = TEMPSKIPS;
 	}
 
-	inline void MS5611PreReader(double *result)
+	inline int MS5611PreReader(double *result)
 	{
 		D1 = MS5611CONVReader(MS5611FD, CONV_D1_4096);
 		D2 = MS5611CONVReader(MS5611FD, CONV_D2_4096);
@@ -106,17 +123,20 @@ public:
 		}
 		P = ((((int64_t)D1 * SENS) / pow(2, 21) - OFF) / pow(2, 15));
 		Pressure = (double)P / (double)100;
-		Altitude = 44330.0f * (1.0f - pow((double)Pressure / (double)LocalPressure, 0.1902949f));
-		result[0] = Pressure;
-		result[1] = Altitude;
-		//cac-=
+		result[MS5611RawPressure] = Pressure * 100;
+
+		PresureAvaTotalSec50HZ -= PresureAvaDataSec50HZ[PresureClockSec50HZ];
+		PresureAvaDataSec50HZ[PresureClockSec50HZ] = result[MS5611RawPressure];
+		PresureAvaTotalSec50HZ += PresureAvaDataSec50HZ[PresureClockSec50HZ];
+		PresureClockSec50HZ++;
+		if (PresureClockSec50HZ >= 10)
+			PresureClockSec50HZ = 0;
+		result[MS5611FastPressure] = PresureAvaTotalSec50HZ / 10.0;
+		result[MS5611FilterPressure] = result[MS5611FilterPressure] * beta50HZ + (1.0 - beta50HZ) * result[MS5611FastPressure];
+		double Altitudes = 44330.0f * (1.0f - pow((result[MS5611FilterPressure] / 100.f) / (LocalPressure / 100.f), 0.1902949f));
+		result[MS5611Altitude] = Altitudes;
 	}
 
-	//result[0] raw pressure
-	//result[1] fast pressure
-	//result[2] filter pressure
-	//result[3] tmp pressure,don't use
-	//result[4] Altitude
 	inline int MS5611FastReader(double *result)
 	{
 		long ret = 0;
@@ -126,7 +146,6 @@ public:
 		char output;
 		if (clockTimer == TEMPSKIP)
 		{
-
 			output = 0x58;
 			write(MS5611FD, &output, 1);
 			usleep(9800);
@@ -180,17 +199,17 @@ public:
 			PresureClock++;
 			if (PresureClock == TEMPSKIP)
 				PresureClock = 0;
-			result[0] = (PresureAvaTotal / TEMPSKIP) * 100;
+			result[MS5611RawPressure] = (PresureAvaTotal / TEMPSKIP) * 100;
 			clockTimer++;
 
 			PresureAvaTotalSec -= PresureAvaDataSec[PresureClockSec];
-			PresureAvaDataSec[PresureClockSec] = result[0];
+			PresureAvaDataSec[PresureClockSec] = result[MS5611RawPressure];
 			PresureAvaTotalSec += PresureAvaDataSec[PresureClockSec];
 			PresureClockSec++;
-			if (PresureClockSec == 20)
+			if (PresureClockSec >= 20)
 				PresureClockSec = 0;
-			result[1] = PresureAvaTotalSec / 20.0;
-			result[3] = result[3] * beta + (1.0 - beta) * result[1];
+			result[MS5611FastPressure] = PresureAvaTotalSec / 20.0;
+			result[MS5611FilterPressure] = result[MS5611FilterPressure] * beta + (1.0 - beta) * result[MS5611FastPressure];
 
 			double diff = result[3] - result[1];
 			if (diff > 8)
@@ -198,10 +217,10 @@ public:
 			if (diff < -8)
 				diff = -8;
 			if (diff > 1 || diff < -1)
-				result[3] -= diff / betaSec;
-			result[2] = result[3];
-			double Altitudes = 44330.0f * (1.0f - pow((result[2] / 100.f) / (LocalPressure / 100.f), 0.1902949f));
-			result[4] = Altitudes;
+				result[MS5611TmpData] -= diff / betaSec;
+			result[MS5611FilterPressure] = result[MS5611TmpData];
+			double Altitudes = 44330.0f * (1.0f - pow((result[MS5611FilterPressure] / 100.f) / (LocalPressure / 100.f), 0.1902949f));
+			result[MS5611Altitude] = Altitudes;
 		}
 		return 0;
 	}
@@ -220,20 +239,23 @@ private:
 	int32_t P;
 	//cac tmp-=
 	double LocalPressure = 1023;
-	double result[2];
-	double Altitude;
-	double Pressure;
+	double Altitude = 0;
+	double Pressure = 0;
 	//cac 100hz
 	int clockTimer = 5;
 	int TEMPSKIP = 5;
 
 	int PresureClock = 0;
-	float PresureAvaData[20];
+	float PresureAvaData[20] = {0};
 	float PresureAvaTotal = 0;
 
 	int PresureClockSec = 0;
-	double PresureAvaDataSec[20];
-	float PresureAvaTotalSec;
+	double PresureAvaDataSec[20] = {0};
+	float PresureAvaTotalSec = 0;
+
+	int PresureClockSec50HZ = 0;
+	double PresureAvaDataSec50HZ[10] = {0};
+	float PresureAvaTotalSec50HZ = 0;
 
 	inline void MS5611PROMSettle()
 	{
