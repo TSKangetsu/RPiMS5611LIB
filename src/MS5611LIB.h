@@ -133,6 +133,13 @@ public:
 			PresureClockSec50HZ = 0;
 		result[MS5611FastPressure] = PresureAvaTotalSec50HZ / 10.0;
 		result[MS5611FilterPressure] = result[MS5611FilterPressure] * beta50HZ + (1.0 - beta50HZ) * result[MS5611FastPressure];
+		double diff = result[MS5611TmpData] - result[MS5611FastPressure];
+		if (diff > 8)
+			diff = 8;
+		if (diff < -8)
+			diff = -8;
+		if (diff > 1 || diff < -1)
+			result[MS5611TmpData] -= diff / betaSec / 2.f;
 		double Altitudes = 44330.0f * (1.0f - pow((result[MS5611FilterPressure] / 100.f) / (LocalPressure / 100.f), 0.1902949f));
 		result[MS5611Altitude] = Altitudes;
 	}
