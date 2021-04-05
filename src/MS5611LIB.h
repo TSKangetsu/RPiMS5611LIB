@@ -22,7 +22,7 @@
 #define CONV_D1_4096 0x48
 #define CONV_D2_4096 0x58
 #define beta 0.985
-#define beta50HZ 0.965
+#define beta50HZ 0.92
 #define betaSec 6.0
 
 #define MS5611RawPressure 0
