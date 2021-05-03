@@ -139,7 +139,7 @@ public:
 		if (diff < -8)
 			diff = -8;
 		if (diff > 1 || diff < -1)
-			result[MS5611TmpData] -= diff / betaSec / 2.f;
+			result[MS5611FilterPressure] -= diff / betaSec / 2.f;
 		double Altitudes = 44330.0f * (1.0f - pow((result[MS5611FilterPressure] / 100.f) / (LocalPressure / 100.f), 0.1902949f));
 		result[MS5611Altitude] = Altitudes;
 	}
