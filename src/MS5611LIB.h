@@ -21,21 +21,28 @@
 #define MS5611_ADDRESS 0x77
 #define CONV_D1_4096 0x48
 #define CONV_D2_4096 0x58
-#define beta 0.985
-#define beta50HZ 0.92
-#define betaSec 6.0
 
 #define MS5611RawPressure 0
 #define MS5611FastPressure 1
 #define MS5611FilterPressure 2
 #define MS5611TmpData 3
 #define MS5611Altitude 4
+#define MS5611Temp 5
 
 class MS5611
 {
 public:
-	inline bool MS5611Init()
+	inline bool MS5611Init(int TabSize, double FilterBETA, double FASTJUMPBETA)
 	{
+		PresureAvaDataSec = new double[TabSize];
+		for (size_t i = 0; i < TabSize; i++)
+		{
+			PresureAvaDataSec[i] = 0;
+		}
+
+		TableSize = TabSize;
+		FilterBeta = FilterBETA;
+		FastJumpBeta = FASTJUMPBETA;
 		if ((MS5611FD = open("/dev/i2c-1", O_RDWR)) < 0)
 		{
 			std::cout << "Failed to open the bus.\n";
@@ -62,14 +69,14 @@ public:
 		LocalPressureSetter();
 		if (FastMode)
 		{
-			for (size_t i = 0; i < 40; i++)
+			for (size_t i = 0; i < TableSize * 2; i++)
 			{
 				MS5611FastReader(tmp);
 			}
 		}
 		else
 		{
-			for (size_t i = 0; i < 20; i++)
+			for (size_t i = 0; i < TableSize * 2; i++)
 			{
 				MS5611PreReader(tmp);
 			}
@@ -88,11 +95,9 @@ public:
 		result[3] = tmp[3];
 	}
 
-	inline void LocalPressureSetter(double SeaLevelPressure = 1023, int TEMPSKIPS = 5)
+	inline void LocalPressureSetter(double SeaLevelPressure = 1023)
 	{
 		LocalPressure = SeaLevelPressure;
-		clockTimer = TEMPSKIPS;
-		TEMPSKIP = TEMPSKIPS;
 	}
 
 	inline int MS5611PreReader(double *result)
@@ -124,24 +129,27 @@ public:
 		P = ((((int64_t)D1 * SENS) / pow(2, 21) - OFF) / pow(2, 15));
 		Pressure = (double)P / (double)100;
 		result[MS5611RawPressure] = Pressure * 100;
-
-		PresureAvaTotalSec50HZ -= PresureAvaDataSec50HZ[PresureClockSec50HZ];
-		PresureAvaDataSec50HZ[PresureClockSec50HZ] = result[MS5611RawPressure];
-		PresureAvaTotalSec50HZ += PresureAvaDataSec50HZ[PresureClockSec50HZ];
-		PresureClockSec50HZ++;
-		if (PresureClockSec50HZ >= 10)
-			PresureClockSec50HZ = 0;
-		result[MS5611FastPressure] = PresureAvaTotalSec50HZ / 10.0;
-		result[MS5611FilterPressure] = result[MS5611FilterPressure] * beta50HZ + (1.0 - beta50HZ) * result[MS5611FastPressure];
-		double diff = result[MS5611TmpData] - result[MS5611FastPressure];
-		if (diff > 8)
-			diff = 8;
-		if (diff < -8)
-			diff = -8;
-		if (diff > 1 || diff < -1)
-			result[MS5611FilterPressure] -= diff / betaSec / 2.f;
+		PresureAvaTotalSec -= PresureAvaDataSec[PresureClockSec];
+		PresureAvaDataSec[PresureClockSec] = result[MS5611RawPressure];
+		PresureAvaTotalSec += PresureAvaDataSec[PresureClockSec];
+		PresureClockSec++;
+		if (PresureClockSec >= TableSize)
+			PresureClockSec = 0;
+		result[MS5611FastPressure] = PresureAvaTotalSec / (double)TableSize;
+		result[MS5611FilterPressure] = result[MS5611FilterPressure] * FilterBeta + (1.0 - FilterBeta) * result[MS5611FastPressure];
+		if (FastJumpBeta > 0)
+		{
+			double diff = result[MS5611TmpData] - result[MS5611FastPressure];
+			if (diff > 8)
+				diff = 8;
+			if (diff < -8)
+				diff = -8;
+			if (diff > 1 || diff < -1)
+				result[MS5611FilterPressure] -= diff / FastJumpBeta;
+		}
 		double Altitudes = 44330.0f * (1.0f - pow((result[MS5611FilterPressure] / 100.f) / (LocalPressure / 100.f), 0.1902949f));
 		result[MS5611Altitude] = Altitudes;
+		result[MS5611Temp] = TEMP;
 	}
 
 	inline int MS5611FastReader(double *result)
@@ -151,7 +159,7 @@ public:
 		int h;
 		char zero = 0x0;
 		char output;
-		if (clockTimer == TEMPSKIP)
+		if (clockTimer >= TEMPSKIP)
 		{
 			output = 0x58;
 			write(MS5611FD, &output, 1);
@@ -204,7 +212,7 @@ public:
 			PresureAvaData[PresureClock] = Pressure;
 			PresureAvaTotal += PresureAvaData[PresureClock];
 			PresureClock++;
-			if (PresureClock == TEMPSKIP)
+			if (PresureClock >= TEMPSKIP)
 				PresureClock = 0;
 			result[MS5611RawPressure] = (PresureAvaTotal / TEMPSKIP) * 100;
 			clockTimer++;
@@ -213,19 +221,20 @@ public:
 			PresureAvaDataSec[PresureClockSec] = result[MS5611RawPressure];
 			PresureAvaTotalSec += PresureAvaDataSec[PresureClockSec];
 			PresureClockSec++;
-			if (PresureClockSec >= 20)
+			if (PresureClockSec >= TableSize)
 				PresureClockSec = 0;
-			result[MS5611FastPressure] = PresureAvaTotalSec / 20.0;
-			result[MS5611FilterPressure] = result[MS5611FilterPressure] * beta + (1.0 - beta) * result[MS5611FastPressure];
-
-			double diff = result[3] - result[1];
-			if (diff > 8)
-				diff = 8;
-			if (diff < -8)
-				diff = -8;
-			if (diff > 1 || diff < -1)
-				result[MS5611TmpData] -= diff / betaSec;
-			result[MS5611FilterPressure] = result[MS5611TmpData];
+			result[MS5611FastPressure] = PresureAvaTotalSec / (double)TableSize;
+			result[MS5611FilterPressure] = result[MS5611FilterPressure] * FilterBeta + (1.0 - FilterBeta) * result[MS5611FastPressure];
+			if (FastJumpBeta > 0)
+			{
+				double diff = result[MS5611TmpData] - result[MS5611FastPressure];
+				if (diff > 8)
+					diff = 8;
+				if (diff < -8)
+					diff = -8;
+				if (diff > 1 || diff < -1)
+					result[MS5611FilterPressure] -= diff / FastJumpBeta;
+			}
 			double Altitudes = 44330.0f * (1.0f - pow((result[MS5611FilterPressure] / 100.f) / (LocalPressure / 100.f), 0.1902949f));
 			result[MS5611Altitude] = Altitudes;
 		}
@@ -252,17 +261,17 @@ private:
 	int clockTimer = 5;
 	int TEMPSKIP = 5;
 
+	int TableSize = 0;
+	double FilterBeta = 0;
+	double FastJumpBeta = 0;
+
 	int PresureClock = 0;
-	float PresureAvaData[20] = {0};
+	float PresureAvaData[10] = {0};
 	float PresureAvaTotal = 0;
 
 	int PresureClockSec = 0;
-	double PresureAvaDataSec[20] = {0};
+	double *PresureAvaDataSec;
 	float PresureAvaTotalSec = 0;
-
-	int PresureClockSec50HZ = 0;
-	double PresureAvaDataSec50HZ[10] = {0};
-	float PresureAvaTotalSec50HZ = 0;
 
 	inline void MS5611PROMSettle()
 	{
