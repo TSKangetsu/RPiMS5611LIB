@@ -17,7 +17,7 @@
 #include <iostream>
 #include <wiringPi.h>
 #define OSR_4096 10000
-#define CMD_PROM_READ 0xA0
+#define CMD_PROM_READ 0xA2
 #define MS5611_ADDRESS 0x77
 #define CONV_D1_4096 0x48
 #define CONV_D2_4096 0x58
@@ -105,28 +105,28 @@ public:
 		D1 = MS5611CONVReader(MS5611FD, CONV_D1_4096);
 		D2 = MS5611CONVReader(MS5611FD, CONV_D2_4096);
 		//cac
-		dT = D2 - (uint32_t)C[5] * pow(2, 8);
-		TEMP = (2000 + (dT * (int64_t)C[5] / pow(2, 23)));
-		OFF = (int64_t)C[2] * pow(2, 16) + (dT * C[4]) / pow(2, 7);
-		SENS = (int32_t)C[1] * pow(2, 15) + dT * C[3] / pow(2, 8);
+		dT = D2 - (uint32_t)C[4] * 256;
+		TEMP = (2000 + (dT * (int64_t)C[5] / 8388608));
+		uint32_t Temp = 0;
+		Temp = TEMP;
+		OFF = (int64_t)C[1] * 65536 + (int64_t)dT * C[3] / 128;
+		SENS = (int32_t)C[0] * 32768 + (int64_t)dT * C[2] / 256;
 		if (TEMP < 2000)
 		{
-			int32_t T1 = 0;
+			Temp -= (dT * dT) / (2 << 30);
 			int64_t OFF1 = 0;
 			int64_t SENS1 = 0;
-			T1 = pow((double)dT, 2) / 2147483648;
-			OFF1 = 5 * pow(((double)TEMP - 2000), 2) / 2;
-			SENS1 = 5 * pow(((double)TEMP - 2000), 2) / 4;
+			OFF1 = 5 * ((TEMP - 2000) * (TEMP - 2000)) / 2;
+			SENS1 = 5 * ((TEMP - 2000) * (TEMP - 2000)) / 4;
 			if (TEMP < -1500)
 			{
-				OFF1 = OFF1 + 7 * pow(((double)TEMP + 1500), 2);
-				SENS1 = SENS1 + 11 * pow(((double)TEMP + 1500), 2) / 2;
+				OFF1 = OFF1 + 7 * ((TEMP + 1500) * (TEMP + 1500));
+				SENS1 = SENS1 + 11 * ((TEMP + 1500) * (TEMP + 1500)) / 2;
 			}
-			TEMP -= T1;
 			OFF -= OFF1;
 			SENS -= SENS1;
 		}
-		P = ((((int64_t)D1 * SENS) / pow(2, 21) - OFF) / pow(2, 15));
+		P = ((((int64_t)D1 * SENS) / 2097152.0 - OFF) / 32768.0);
 		Pressure = (double)P / (double)100;
 		result[MS5611RawPressure] = Pressure * 100;
 		PresureAvaTotalSec -= PresureAvaDataSec[PresureClockSec];
@@ -149,7 +149,7 @@ public:
 		}
 		double Altitudes = 44330.0f * (1.0f - pow((result[MS5611FilterPressure] / 100.f) / (LocalPressure / 100.f), 0.1902949f));
 		result[MS5611Altitude] = Altitudes;
-		result[MS5611Temp] = TEMP;
+		result[MS5611Temp] = Temp;
 	}
 
 	inline int MS5611FastReader(double *result)
@@ -171,28 +171,29 @@ public:
 				return -2;
 			}
 			D2 = D[0] * (unsigned long)65536 + D[1] * (unsigned long)256 + D[2];
-			dT = D2 - (uint32_t)C[5] * pow(2, 8);
-			TEMP = (2000 + (dT * (int64_t)C[5] / pow(2, 23)));
-			OFF = (int64_t)C[2] * pow(2, 16) + (dT * C[4]) / pow(2, 7);
-			SENS = (int32_t)C[1] * pow(2, 15) + dT * C[3] / pow(2, 8);
+			dT = D2 - (uint32_t)C[4] * 256;
+			TEMP = (2000 + (dT * (int64_t)C[5] / 8388608));
+			uint32_t Temp = 0;
+			Temp = TEMP;
+			OFF = (int64_t)C[1] * 65536 + (int64_t)dT * C[3] / 128;
+			SENS = (int32_t)C[0] * 32768 + (int64_t)dT * C[2] / 256;
 			if (TEMP < 2000)
 			{
-				int32_t T1 = 0;
+				Temp -= (dT * dT) / (2 << 30);
 				int64_t OFF1 = 0;
 				int64_t SENS1 = 0;
-				T1 = pow((double)dT, 2) / 2147483648;
-				OFF1 = 5 * pow(((double)TEMP - 2000), 2) / 2;
-				SENS1 = 5 * pow(((double)TEMP - 2000), 2) / 4;
+				OFF1 = 5 * ((TEMP - 2000) * (TEMP - 2000)) / 2;
+				SENS1 = 5 * ((TEMP - 2000) * (TEMP - 2000)) / 4;
 				if (TEMP < -1500)
 				{
-					OFF1 = OFF1 + 7 * pow(((double)TEMP + 1500), 2);
-					SENS1 = SENS1 + 11 * pow(((double)TEMP + 1500), 2) / 2;
+					OFF1 = OFF1 + 7 * ((TEMP + 1500) * (TEMP + 1500));
+					SENS1 = SENS1 + 11 * ((TEMP + 1500) * (TEMP + 1500)) / 2;
 				}
-				TEMP -= T1;
 				OFF -= OFF1;
 				SENS -= SENS1;
 			}
 			clockTimer = 0;
+			result[MS5611Temp] = Temp;
 		}
 		else
 		{
@@ -206,7 +207,7 @@ public:
 				return -1;
 			}
 			D1 = D[0] * (unsigned long)65536 + D[1] * (unsigned long)256 + D[2];
-			P = ((((int64_t)D1 * SENS) / pow(2, 21) - OFF) / pow(2, 15));
+			P = ((((int64_t)D1 * SENS) / 2097152.0 - OFF) / 32768.0);
 			Pressure = (double)P / (double)100;
 			PresureAvaTotal -= PresureAvaData[PresureClock];
 			PresureAvaData[PresureClock] = Pressure;
@@ -275,7 +276,7 @@ private:
 
 	inline void MS5611PROMSettle()
 	{
-		for (int i = 0; i < 7; i++)
+		for (int i = 0; i < 6; i++)
 		{
 			C[i] = MS5611PROMReader(MS5611FD, CMD_PROM_READ + (i * 2));
 			usleep(1000);
