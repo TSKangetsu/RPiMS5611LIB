@@ -139,7 +139,7 @@ public:
 		result[MS5611FilterPressure] = result[MS5611FilterPressure] * FilterBeta + (1.0 - FilterBeta) * result[MS5611FastPressure];
 		if (FastJumpBeta > 0)
 		{
-			double diff = result[MS5611TmpData] - result[MS5611FastPressure];
+			double diff = result[MS5611FilterPressure] - result[MS5611FastPressure];
 			if (diff > 8)
 				diff = 8;
 			if (diff < -8)
