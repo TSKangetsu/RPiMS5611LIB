@@ -29,6 +29,83 @@
 #define MS5611Altitude 4
 #define MS5611Temp 5
 
+#define PRESSURE_SAMPLES_MEDIAN 3
+#define PRESSURE_DELTA_GLITCH_THRESHOLD 1000
+
+#define _CHOOSE_VAR2(prefix, unique) prefix##unique
+#define _CHOOSE_VAR(prefix, unique) _CHOOSE_VAR2(prefix, unique)
+#define _ABS_II(x, var)          \
+	(__extension__({             \
+		__typeof__(x) var = (x); \
+		var < 0 ? -var : var;    \
+	}))
+#define _ABS_I(x, var) _ABS_II(x, var)
+#define ABS(x) _ABS_I(x, _CHOOSE_VAR(_abs, __COUNTER__))
+
+#define QMF_SWAP(type, a, b) \
+	{                        \
+		type temp = (a);     \
+		(a) = (b);           \
+		(b) = temp;          \
+	}
+#define QMF_SORT(type, a, b)          \
+	{                                 \
+		if ((a) > (b))                \
+			QMF_SWAP(type, (a), (b)); \
+	}
+
+inline int32_t quickMedianFilter3(int32_t *v)
+{
+	int32_t p[3];
+	memcpy(p, v, sizeof(p));
+
+	QMF_SORT(int32_t, p[0], p[1]);
+	QMF_SORT(int32_t, p[1], p[2]);
+	QMF_SORT(int32_t, p[0], p[1]);
+	return p[1];
+}
+
+static int32_t barometerFilterSamples[PRESSURE_SAMPLES_MEDIAN];
+static int currentFilterSampleIndex = 0;
+static bool medianFilterReady = false;
+
+static inline int32_t applyBarometerMedianFilter(int32_t newPressureReading)
+{
+	int nextSampleIndex = currentFilterSampleIndex + 1;
+	if (nextSampleIndex == PRESSURE_SAMPLES_MEDIAN)
+	{
+		nextSampleIndex = 0;
+		medianFilterReady = true;
+	}
+	int previousSampleIndex = currentFilterSampleIndex - 1;
+	if (previousSampleIndex < 0)
+	{
+		previousSampleIndex = PRESSURE_SAMPLES_MEDIAN - 1;
+	}
+	const int previousPressureReading = barometerFilterSamples[previousSampleIndex];
+
+	if (medianFilterReady)
+	{
+		if (ABS(previousPressureReading - newPressureReading) < PRESSURE_DELTA_GLITCH_THRESHOLD)
+		{
+			barometerFilterSamples[currentFilterSampleIndex] = newPressureReading;
+			currentFilterSampleIndex = nextSampleIndex;
+			return quickMedianFilter3(barometerFilterSamples);
+		}
+		else
+		{
+			// glitch threshold exceeded, so just return previous reading and don't add the glitched reading to the filter array
+			return barometerFilterSamples[previousSampleIndex];
+		}
+	}
+	else
+	{
+		barometerFilterSamples[currentFilterSampleIndex] = newPressureReading;
+		currentFilterSampleIndex = nextSampleIndex;
+		return newPressureReading;
+	}
+}
+
 class MS5611
 {
 public:
@@ -66,7 +143,6 @@ public:
 	inline void MS5611Calibration(double result[10], bool FastMode)
 	{
 		double tmp[10] = {0};
-		LocalPressureSetter();
 		if (FastMode)
 		{
 			for (size_t i = 0; i < TableSize * 2; i++)
@@ -93,11 +169,6 @@ public:
 		result[1] = tmp[1];
 		result[2] = tmp[2];
 		result[3] = tmp[3];
-	}
-
-	inline void LocalPressureSetter(double SeaLevelPressure = 1023)
-	{
-		LocalPressure = SeaLevelPressure;
 	}
 
 	inline int MS5611PreReader(double *result)
@@ -128,7 +199,8 @@ public:
 		}
 		P = ((((int64_t)D1 * SENS) / 2097152.0 - OFF) / 32768.0);
 		Pressure = (double)P / (double)100;
-		result[MS5611RawPressure] = Pressure * 100;
+		Pressure = applyBarometerMedianFilter((Pressure * 100.f));
+		result[MS5611RawPressure] = Pressure;
 		PresureAvaTotalSec -= PresureAvaDataSec[PresureClockSec];
 		PresureAvaDataSec[PresureClockSec] = result[MS5611RawPressure];
 		PresureAvaTotalSec += PresureAvaDataSec[PresureClockSec];
@@ -147,7 +219,7 @@ public:
 			if (diff > 1 || diff < -1)
 				result[MS5611FilterPressure] -= diff / FastJumpBeta;
 		}
-		double Altitudes = 44330.0f * (1.0f - pow((result[MS5611FilterPressure] / 100.f) / (LocalPressure / 100.f), 0.1902949f));
+		double Altitudes = 44330.0f * (1.0f - pow((result[MS5611FilterPressure] / 100.f) / (101325.0f / 100.f), 0.1902949f));
 		result[MS5611Altitude] = Altitudes;
 		result[MS5611Temp] = Temp;
 	}
@@ -240,6 +312,11 @@ public:
 			result[MS5611Altitude] = Altitudes;
 		}
 		return 0;
+	}
+
+	inline double Pressure2Altitude(double Pressure)
+	{
+		return 44330.0f * (1.0f - pow((Pressure / 100.f) / (101325.0f / 100.f), 0.1902949f));
 	}
 
 private:
