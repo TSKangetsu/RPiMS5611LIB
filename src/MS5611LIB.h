@@ -34,11 +34,12 @@
 
 #define _CHOOSE_VAR2(prefix, unique) prefix##unique
 #define _CHOOSE_VAR(prefix, unique) _CHOOSE_VAR2(prefix, unique)
-#define _ABS_II(x, var)          \
-	(__extension__({             \
-		__typeof__(x) var = (x); \
-		var < 0 ? -var : var;    \
-	}))
+#define _ABS_II(x, var)              \
+	(__extension__(                  \
+		{                            \
+			__typeof__(x) var = (x); \
+			var < 0 ? -var : var;    \
+		}))
 #define _ABS_I(x, var) _ABS_II(x, var)
 #define ABS(x) _ABS_I(x, _CHOOSE_VAR(_abs, __COUNTER__))
 
@@ -318,6 +319,11 @@ public:
 	{
 		return 44330.0f * (1.0f - pow((Pressure / 100.f) / (101325.0f / 100.f), 0.1902949f));
 	}
+
+	inline ~MS5611()
+	{
+		close(MS5611FD);
+	};
 
 private:
 	int MS5611FD;
